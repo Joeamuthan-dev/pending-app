@@ -213,30 +213,32 @@ const Login: React.FC = () => {
       </div>
 
       {/* Form panel */}
-      <div className="login-form-panel">
+      <div className="login-form-panel" style={{ height: '100vh', justifyContent: 'center', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
         <div className="aurora-bg">
           <div className="aurora-gradient-1"></div>
           <div className="aurora-gradient-2"></div>
         </div>
 
         {/* Tree graphic — mobile only (hidden on desktop where it lives in hero panel) */}
-        <div className="login-mobile-tree">
-          <div className="tree-container" style={{ position: 'relative', width: '100%', height: '220px' }}>
-            <TreeGraphic isBloomed={isPulled} />
+        {!isPulled && (
+          <div className="login-mobile-tree">
+            <div className="tree-container" style={{ position: 'relative', width: '100%', height: '160px' }}>
+              <TreeGraphic isBloomed={isPulled} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Pull rope */}
-        <div className="login-rope-area">
-          <div className={`pull-rope-container ${isPulled ? 'pulled' : ''}`} style={{ position: 'relative', height: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div className={`pull-rope-line ${isAnimating ? 'animate-pull-toggle' : ''}`}></div>
+        <div className="login-rope-area" style={{ flexShrink: 0, marginTop: '1rem' }}>
+          <div className={`pull-rope-container ${isPulled ? 'pulled' : ''}`} style={{ position: 'relative', height: '14vh', minHeight: '100px', right: 'auto', top: 'auto', left: 'auto', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div className={`pull-rope-line ${isAnimating ? 'animate-pull-toggle' : ''}`} style={{ height: '100%' }}></div>
             <div 
               className={`pull-rope-handle ${isAnimating ? 'animate-pull-handle-toggle' : ''}`}
               onClick={handlePullRope}
             >
               <div className="pull-rope-inner"></div>
               {!isPulled && !isAnimating && (
-                <div className="pull-rope-guideline">
+                <div className="pull-rope-guideline" style={{ top: '120%', whiteSpace: 'nowrap' }}>
                   Pull To Login
                 </div>
               )}
@@ -244,10 +246,10 @@ const Login: React.FC = () => {
           </div>
         </div>
 
-        <div className={`auth-title slide-up-fade ${isPulled ? 'visible' : ''}`} style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2.5rem', fontWeight: 900, letterSpacing: '-0.025em', margin: 0 }}>{isLogin ? 'PENDING.' : 'Join Us.'}</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: '0.5rem' }}>
-            {isLogin ? "Grow your productivity, achieve your goals." : 'Start organizing your tasks with premium tools.'}
+        <div className={`auth-title slide-up-fade ${isPulled ? 'visible' : ''}`} style={{ textAlign: 'center', marginBottom: '1rem', flexShrink: 0 }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.025em', margin: 0 }}>{isLogin ? 'PENDING.' : 'Join Us.'}</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+            {isLogin ? "Grow your productivity." : 'Organize your tasks.'}
           </p>
         </div>
 
@@ -259,10 +261,11 @@ const Login: React.FC = () => {
               color: '#f87171', 
               padding: '0.75rem 1rem', 
               borderRadius: '0.75rem', 
-              marginBottom: '1.5rem', 
-              fontSize: '0.85rem',
+              marginBottom: '1rem', 
+              fontSize: '0.8rem',
               border: '1px solid rgba(239, 68, 68, 0.2)',
-              width: '100%'
+              width: '100%',
+              flexShrink: 0
             }}
           >
             {error}
@@ -271,14 +274,14 @@ const Login: React.FC = () => {
 
         <form 
           className={`slide-up-fade ${isPulled ? 'visible' : ''}`} 
-          style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }} 
+          style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem', flexShrink: 0 }} 
           onSubmit={handleSubmit}
         >
           {!isLogin && (
             <div className="input-group" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>FULL NAME</label>
+              <label style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>FULL NAME</label>
               <div style={{ position: 'relative' }}>
-                <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', fontSize: '20px' }}>person</span>
+                <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', fontSize: '18px' }}>person</span>
                 <input 
                   type="text" 
                   className="form-input" 
@@ -287,16 +290,16 @@ const Login: React.FC = () => {
                   onChange={(e) => setName(e.target.value)}
                   required={isPulled && !isLogin}
                   disabled={!isPulled}
-                  style={{ paddingLeft: '3rem', height: '3.5rem', borderRadius: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+                  style={{ paddingLeft: '3rem', height: '3rem', borderRadius: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}
                 />
               </div>
             </div>
           )}
 
           <div className="input-group" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>EMAIL ADDRESS</label>
+            <label style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>EMAIL ADDRESS</label>
             <div style={{ position: 'relative' }}>
-              <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', fontSize: '20px' }}>mail</span>
+              <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', fontSize: '18px' }}>mail</span>
               <input 
                 type="email" 
                 className="form-input" 
@@ -305,14 +308,14 @@ const Login: React.FC = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required={isPulled}
                 disabled={!isPulled}
-                style={{ paddingLeft: '3rem', height: '3.5rem', borderRadius: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+                style={{ paddingLeft: '3rem', height: '3rem', borderRadius: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}
               />
             </div>
           </div>
           
           <div className="input-group" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>4-DIGIT PIN</label>
-            <div className="pin-input-container" style={{ gap: '0.75rem' }}>
+            <label style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.05em' }}>4-DIGIT PIN</label>
+            <div className="pin-input-container" style={{ gap: '0.5rem' }}>
               {[0, 1, 2, 3].map((index) => (
                 <input
                   key={index}
@@ -328,12 +331,12 @@ const Login: React.FC = () => {
                   disabled={!isPulled}
                   style={{ 
                     textAlign: 'center', 
-                    fontSize: '1.5rem', 
+                    fontSize: '1.2rem', 
                     fontWeight: '900', 
                     padding: 0, 
-                    height: '4rem', 
+                    height: '3.5rem', 
                     width: '100%',
-                    borderRadius: '1rem',
+                    borderRadius: '0.75rem',
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.05)'
                   }}
@@ -351,19 +354,19 @@ const Login: React.FC = () => {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 style={{ 
                   accentColor: 'var(--primary)',
-                  width: '1rem',
-                  height: '1rem',
+                  width: '0.9rem',
+                  height: '0.9rem',
                   cursor: 'pointer'
                 }}
               />
-              <label htmlFor="rememberMe" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', cursor: 'pointer' }}>Remember Password</label>
+              <label htmlFor="rememberMe" style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', cursor: 'pointer' }}>Remember Password</label>
             </div>
           )}
 
           <button 
             type="submit" 
             className="glow-btn-primary" 
-            style={{ marginTop: '1rem', height: '4rem' }} 
+            style={{ marginTop: '0.5rem', height: '3.5rem', borderRadius: '1rem', minHeight: '3.5rem', fontSize: '1rem' }} 
             disabled={!isPulled}
           >
             <span>{isLogin ? 'Log In' : 'Sign Up'}</span>
@@ -371,7 +374,7 @@ const Login: React.FC = () => {
           </button>
         </form>
 
-        <div className={`auth-links slide-up-fade ${isPulled ? 'visible' : ''}`} style={{ width: '100%', marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+        <div className={`auth-links slide-up-fade ${isPulled ? 'visible' : ''}`} style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
           <a 
             href="#" 
             onClick={(e) => { e.preventDefault(); setIsLogin(!isLogin); setError(''); }}

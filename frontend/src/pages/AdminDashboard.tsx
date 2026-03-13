@@ -1,380 +1,233 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import PageShell from '../components/PageShell';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebase';
+import { useNavigate } from 'react-router-dom';
 import { 
   collection, 
   onSnapshot, 
+  query, 
+  orderBy, 
+  limit, 
   doc, 
   updateDoc, 
-  deleteDoc, 
-  query, 
-  orderBy 
+  getDocs 
 } from 'firebase/firestore';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { db } from '../firebase';
+import BottomNav from '../components/BottomNav';
 
 const AdminDashboard: React.FC = () => {
-  const { user: currentUser, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'feedback' | 'settings'>('overview');
-  const [stats, setStats] = useState<any>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({ users: 0, tasks: 0, feedback: 0 });
   const [users, setUsers] = useState<any[]>([]);
-  const [feedback, setFeedback] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'feedback'>('overview');
 
-  // Realtime Firebase Users & Feedback
   useEffect(() => {
-    const qUsers = query(collection(db, "users"), orderBy("updatedAt", "desc"));
-    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-      const usersList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setUsers(usersList as any);
-      setLoading(false);
+    // Role check
+    if (user && user.role !== 'admin') {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    // Realtime Feedback
+    const qFeedback = query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubFeedback = onSnapshot(qFeedback, (snap) => {
+      setFeedbacks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setStats(prev => ({ ...prev, feedback: snap.size }));
     });
 
-    const qFeedback = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
-    const unsubFeedback = onSnapshot(qFeedback, (snapshot) => {
-      const fbList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setFeedback(fbList as any);
+    // Realtime Users
+    const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubUsers = onSnapshot(qUsers, (snap) => {
+      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setStats(prev => ({ ...prev, users: snap.size }));
     });
+
+    // Get Task Count (One-time or could be realtime too)
+    const getTaskCount = async () => {
+      const snap = await getDocs(collection(db, 'tasks'));
+      setStats(prev => ({ ...prev, tasks: snap.size }));
+    };
+    getTaskCount();
 
     return () => {
-      unsubUsers();
       unsubFeedback();
+      unsubUsers();
     };
-  }, []);
+  }, [user]);
 
-  // Fetch backend stats (remaining non-firebase data)
-  const fetchBackendData = async () => {
+  const updateUserRole = async (userId: string, newRole: string) => {
     try {
-      const statsRes = await axios.get(`${API_URL}/admin/stats`);
-      setStats(statsRes.data);
+      await updateDoc(doc(db, 'users', userId), { role: newRole });
     } catch (err) {
-      console.error('Backend admin data fetch error:', err);
+      console.error('Error updating role:', err);
     }
   };
 
-  useEffect(() => {
-    fetchBackendData();
-    const interval = setInterval(fetchBackendData, 60000); 
-    return () => clearInterval(interval);
-  }, []);
-
-  const navItems = [
-    { id: 'overview', label: 'Overview', icon: 'dashboard' },
-    { id: 'users', label: 'Users', icon: 'group' },
-    { id: 'feedback', label: 'Feedback', icon: 'chat_bubble' },
-    { id: 'settings', label: 'Settings', icon: 'settings' },
-  ];
-
-  const filteredUsers = users.filter((u: any) => 
-    (u.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (u.email?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-  );
-
-  const handleUpdateRole = async (userId: string, newRole: string) => {
-    try {
-      await updateDoc(doc(db, "users", userId), { role: newRole });
-      // Also sync to backend if needed, but let's stick to Firebase as primary if that's the request
-    } catch (err) {
-      console.error("Error updating role:", err);
-    }
-  };
-
-  const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to delete this user identity forever?")) return;
-    try {
-      await deleteDoc(doc(db, "users", userId));
-    } catch (err) {
-      console.error("Error deleting user:", err);
-    }
-  };
-
-  if (loading) {
-    return (
-      <PageShell>
-        <div className="flex items-center justify-center min-h-[60vh] py-20">
-          <div className="size-12 border-4 border-[#BBFF00]/20 border-t-[#BBFF00] rounded-full animate-spin"></div>
-        </div>
-      </PageShell>
-    );
-  }
+  if (!user || user.role !== 'admin') return null;
 
   return (
-    <PageShell>
-      <div className="flex flex-col lg:flex-row gap-8 pb-32 text-white min-h-[80vh]">
-        
-        {/* Sidebar Local Menu */}
-        <aside className="lg:w-64 flex flex-col gap-6">
-          <div className="flex flex-col gap-1 px-4">
-            <h1 className="text-2xl font-black tracking-tight uppercase italic text-[#BBFF00]">Admin Hub</h1>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest leading-none">Realtime Control</p>
-          </div>
-          
-          <nav className="flex lg:flex-col gap-2 p-2 bg-white/[0.03] rounded-[2rem] border border-white/5 overflow-x-auto lg:overflow-visible">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
-                className={`flex items-center gap-3 px-6 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap lg:whitespace-normal ${
-                  activeTab === item.id 
-                    ? 'bg-[#BBFF00] text-black shadow-[0_0_20px_rgba(187,255,0,0.3)]' 
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex flex-col gap-2 mt-4 px-2">
-            <button
-              onClick={() => window.location.href = '/dashboard'}
-              className="flex items-center gap-3 px-6 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all text-slate-400 hover:bg-white/5 hover:text-white"
-            >
-              <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
-              User App
-            </button>
-            <button
-              onClick={() => logout()}
-              className="flex items-center gap-3 px-6 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all text-red-500 hover:bg-red-500/10 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]"
-            >
-              <span className="material-symbols-outlined text-[18px]">logout</span>
-              Sign Out
-            </button>
-          </div>
-        </aside>
-
-        {/* Dynamic Content Area */}
-        <main className="flex-1 flex flex-col gap-8">
-          
-          {/* Header */}
-          <header className="flex items-center justify-between">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">
-                {navItems.find(n => n.id === activeTab)?.label}
-              </h2>
-              <div className="h-1 w-12 bg-[#BBFF00] rounded-full"></div>
-            </div>
-            {activeTab === 'users' && (
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
-                <input 
-                  type="text" 
-                  placeholder="Search identity..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-bold focus:outline-none focus:border-[#BBFF00]/50 transition-colors w-64"
-                />
-              </div>
-            )}
-          </header>
-
-          {activeTab === 'overview' && (
-            <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                <div className="glass-card p-6 bg-[#1A1A1A] border-white/5 rounded-[2rem] flex flex-col gap-4 relative overflow-hidden group">
-                  <div className="absolute -right-4 -top-4 size-24 bg-[#BBFF00]/5 rounded-full blur-2xl group-hover:bg-[#BBFF00]/10 transition-all"></div>
-                  <div className="flex items-center justify-between">
-                    <div className="size-10 rounded-xl bg-white/5 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-[#BBFF00] text-xl">group</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                       <span className="text-[10px] font-bold px-2 py-1 rounded bg-[#BBFF00]/10 text-[#BBFF00]">
-                         REALTIME
-                       </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total Signuped</p>
-                    <h3 className="text-4xl font-black text-white">{users.length}</h3>
-                    <div className="flex gap-3 mt-2">
-                       <div className="flex flex-col">
-                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Admins</span>
-                          <span className="text-xs font-black text-[#BBFF00]">{users.filter(u => u.role === 'admin').length}</span>
-                       </div>
-                       <div className="flex flex-col border-l border-white/5 pl-3">
-                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Regulars</span>
-                          <span className="text-xs font-black text-white">{users.filter(u => u.role !== 'admin').length}</span>
-                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {[
-                  { label: 'System Tasks', value: stats?.totalTasks || 0, trend: 'Backend', icon: 'task_alt' },
-                  { label: 'Feedbacks', value: feedback.length, trend: 'Recent', icon: 'chat_bubble' },
-                  { label: 'Health', value: stats?.systemHealth || '100%', trend: 'Operational', icon: 'bolt' }
-                ].map((stat, i) => (
-                  <div key={i} className="glass-card p-6 bg-[#1A1A1A] border-white/5 rounded-[2rem] flex flex-col gap-4 relative overflow-hidden group">
-                    <div className="absolute -right-4 -top-4 size-24 bg-[#BBFF00]/5 rounded-full blur-2xl group-hover:bg-[#BBFF00]/10 transition-all"></div>
-                    <div className="flex items-center justify-between">
-                      <div className="size-10 rounded-xl bg-white/5 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[#BBFF00] text-xl">{stat.icon}</span>
-                      </div>
-                      <span className="text-[10px] font-bold px-2 py-1 rounded bg-white/5 text-[#BBFF00]">
-                        {stat.trend}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
-                      <h3 className="text-3xl font-black text-white">{stat.value}</h3>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                <div className="glass-card bg-[#1A1A1A] border-white/5 rounded-[2rem] p-8 flex flex-col gap-6">
-                   <h3 className="text-lg font-black uppercase italic text-slate-400">Live Activity Feed</h3>
-                   <div className="flex flex-col gap-4">
-                      {users.slice(0, 5).map((u, i) => (
-                        <div key={i} className="flex items-center gap-4 py-3 border-b border-white/5 last:border-0">
-                           <div className="size-2 rounded-full bg-[#BBFF00]"></div>
-                           <p className="text-sm text-slate-400 flex-1"><span className="text-white font-bold">{u.name || u.email}</span> joined the board.</p>
-                           <span className="text-[10px] text-slate-600 font-bold uppercase">{new Date(u.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      ))}
-                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'users' && (
-            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="glass-card bg-[#1A1A1A] border-white/5 rounded-[2rem] overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-white/5">
-                      <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-slate-500">Realtime Identity</th>
-                      <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-slate-500">Access Level</th>
-                      <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-slate-500">Registration</th>
-                      <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Admin Controls</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {filteredUsers.map((u: any, i) => (
-                      <tr key={i} className="hover:bg-white/[0.02] transition-colors group">
-                        <td className="px-6 py-5">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold group-hover:text-[#BBFF00] transition-colors">{u.name || 'Firebase User'}</span>
-                            <span className="text-[10px] text-slate-500">{u.email}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <select 
-                            value={u.role || 'user'}
-                            onChange={(e) => handleUpdateRole(u.id, e.target.value)}
-                            className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-transparent border border-white/10 cursor-pointer focus:outline-none focus:border-[#BBFF00] ${u.role === 'admin' ? 'text-[#BBFF00]' : 'text-slate-400'}`}
-                          >
-                            <option value="user" className="bg-[#1A1A1A]">User</option>
-                            <option value="admin" className="bg-[#1A1A1A]">Admin</option>
-                          </select>
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className="text-xs font-mono text-slate-400">
-                            {u.lastLoginTime ? new Date(u.lastLoginTime).toLocaleString() : (u.createdAt ? new Date(u.createdAt).toLocaleString() : 'Never')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5 text-right">
-                          <div className="flex gap-2 justify-end">
-                            <button 
-                              onClick={() => handleDeleteUser(u.id)}
-                              className="size-9 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-all active:scale-90"
-                            >
-                              <span className="material-symbols-outlined text-sm">delete</span>
-                            </button>
-                            <button className="size-9 rounded-xl bg-white/5 text-slate-400 flex items-center justify-center hover:bg-white/10 transition-all">
-                              <span className="material-symbols-outlined text-sm">history</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'feedback' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {feedback.map((f, i) => (
-                <div key={i} className="glass-card p-6 bg-[#1A1A1A] border-white/5 rounded-3xl flex flex-col gap-4 hover:border-[#BBFF00]/20 transition-all group">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="size-2 rounded-full bg-[#BBFF00] shadow-[0_0_8px_#BBFF00]"></div>
-                      <span className="text-[10px] font-black uppercase text-[#BBFF00] tracking-widest">{f.type}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-600 font-mono font-bold uppercase">{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : 'Dec 2023'}</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-bold text-slate-400">{f.userName || 'Anonymous'} ({f.userEmail || 'No Email'})</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-slate-300 leading-relaxed group-hover:text-white transition-colors">
-                      {f.description}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
-                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">ID: ...{f.userId?.slice(-6) || 'Anon'}</span>
-                     </div>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-1.5 rounded-lg bg-[#BBFF00] text-black text-[10px] font-black uppercase transition-transform active:scale-95">Resolve</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {activeTab === 'settings' && (
-            <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="glass-card p-8 bg-[#1A1A1A] border-white/5 rounded-[2rem] flex flex-col gap-6">
-                    <h3 className="text-xl font-black uppercase italic text-white">Global Access</h3>
-                    <div className="flex flex-col gap-5">
-                       <div className="flex items-center justify-between">
-                          <div className="flex flex-col">
-                             <span className="text-sm font-bold">Registration Lock</span>
-                             <span className="text-[10px] text-slate-500">Prevent new user signups</span>
-                          </div>
-                          <div className="size-10 rounded-full bg-white/5 flex items-center justify-around cursor-pointer">
-                             <div className="size-6 rounded-full bg-slate-700"></div>
-                          </div>
-                       </div>
-                    </div>
-                  </div>
-               </div>
-            </div>
-          )}
-
-        </main>
+    <div className="page-shell">
+      <div className="aurora-bg">
+        <div className="aurora-gradient-1"></div>
+        <div className="aurora-gradient-2"></div>
       </div>
 
-      {/* Admin Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 h-14 bg-black/80 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-8 z-50">
-        <div className="flex items-center gap-3">
-          <div className="size-2 rounded-full bg-[#BBFF00] animate-pulse"></div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Authenticated: {currentUser?.email}</p>
+      <header className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>Admin Hub</h1>
+          <p style={{ color: '#BBFF00', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>
+            System Integrity & Oversight
+          </p>
         </div>
-        <div className="flex gap-6">
-          <button className="text-[10px] font-black uppercase tracking-widest text-[#BBFF00] hover:underline">Support Hub</button>
-          <button className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white">API V4.0 (Realtime Enabled)</button>
+      </header>
+
+      {/* Admin Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '1.25rem' }}>
+        {(['overview', 'users', 'feedback'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: '0.875rem',
+              border: 'none',
+              background: activeTab === tab ? '#BBFF00' : 'transparent',
+              color: activeTab === tab ? '#064e3b' : '#64748b',
+              fontWeight: 900,
+              fontSize: '0.75rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <main style={{ paddingBottom: '4rem' }}>
+        {activeTab === 'overview' && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)', gap: '1rem' }}>
+        <div className="glass-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <span className="material-symbols-outlined" style={{ color: '#10b981', marginBottom: '0.5rem', fontSize: '20px' }}>group</span>
+          <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900 }}>{stats.users}</h4>
+          <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Users</p>
         </div>
-      </footer>
-    </PageShell>
+        <div className="glass-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <span className="material-symbols-outlined" style={{ color: '#3b82f6', marginBottom: '0.5rem', fontSize: '20px' }}>task_alt</span>
+          <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900 }}>{stats.tasks}</h4>
+          <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Tasks</p>
+        </div>
+        <div className="glass-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <span className="material-symbols-outlined" style={{ color: '#f59e0b', marginBottom: '0.5rem', fontSize: '20px' }}>forum</span>
+          <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900 }}>{stats.feedback}</h4>
+          <p style={{ margin: 0, fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Feedback</p>
+        </div>
+      </div>
+
+            <div className="glass-card" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ margin: 0, fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>Recent Signups</h3>
+                <span style={{ fontSize: '9px', fontWeight: 900, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '4px' }}>Live Users</span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                 {users.slice(0, 3).map(u => (
+                   <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.75rem' }}>
+                     <div>
+                       <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'white' }}>{u.name}</div>
+                       <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Joined {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}</div>
+                     </div>
+                     <span style={{ fontSize: '0.75rem', fontWeight: 900, color: u.role === 'admin' ? '#BBFF00' : '#64748b' }}>{u.role?.toUpperCase() || 'USER'}</span>
+                   </div>
+                 ))}
+                 {users.length === 0 && (
+                   <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>No users found.</div>
+                 )}
+              </div>
+            </div>
+
+            <div className="glass-card" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ margin: 0, fontSize: '10px', fontWeight: 900, color: '#f59e0b', textTransform: 'uppercase' }}>Recent Feedback</h3>
+                <span style={{ fontSize: '9px', fontWeight: 900, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '2px 8px', borderRadius: '4px' }}>Live Feed</span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                 {feedbacks.slice(0, 3).map(f => (
+                   <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.75rem' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'white' }}>{f.userName || 'Anonymous'}</div>
+                       <div style={{ fontSize: '0.65rem', color: '#64748b' }}>{new Date(f.createdAt).toLocaleDateString()}</div>
+                     </div>
+                     <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.4 }}>"{f.message}"</div>
+                   </div>
+                 ))}
+                 {feedbacks.length === 0 && (
+                   <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>No feedback received yet.</div>
+                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {users.map(u => (
+              <div key={u.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: 'white' }}>{u.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{u.email}</div>
+                  <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '4px' }}>Last: {u.lastLoginTime ? new Date(u.lastLoginTime).toLocaleString() : 'Never'}</div>
+                </div>
+                <select 
+                  value={u.role || 'user'} 
+                  onChange={(e) => updateUserRole(u.id, e.target.value)}
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '0.7rem', fontWeight: 900, padding: '4px 8px', borderRadius: '8px' }}
+                >
+                  <option value="user">USER</option>
+                  <option value="admin">ADMIN</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'feedback' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {feedbacks.map(f => (
+              <div key={f.id} className="glass-card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'white' }}>{f.userName || 'Anonymous'}</span>
+                  <span style={{ fontSize: '0.65rem', color: '#475569' }}>{new Date(f.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.5' }}>{f.message}</p>
+                <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+                  {f.type && (
+                    <span style={{ fontSize: '9px', fontWeight: 900, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>{f.type}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {feedbacks.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '4rem 0', opacity: 0.3 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>forum</span>
+                <p style={{ fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', fontSize: '10px' }}>No feedback received</p>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      <BottomNav />
+    </div>
   );
 };
 

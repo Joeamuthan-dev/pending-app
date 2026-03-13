@@ -1,242 +1,281 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import BottomNav from '../components/BottomNav';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { updatePassword } from 'firebase/auth';
 import { auth } from '../firebase';
-import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
-import { useLanguage, type Language } from '../context/LanguageContext';
-import BottomNav from '../components/BottomNav';
-
-const API_URL = 'http://localhost:3001/api';
 
 const Settings: React.FC = () => {
-  const { logout, user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
-
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
+  const [isUpdatingPin, setIsUpdatingPin] = useState(false);
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
-  const toggleLanguage = () => {
-    const langs: Language[] = ['English', 'Tamil'];
-    const nextIndex = (langs.indexOf(language) + 1) % langs.length;
-    setLanguage(langs[nextIndex]);
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const handleUpdatePin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPinError('');
-    setPinSuccess(false);
-
-    if (newPin.length !== 4) {
-      setPinError(t('enter_4_digits'));
+    if (newPin.length < 4) {
+      setPinError('PIN must be at least 4 digits');
       return;
     }
-
     if (newPin !== confirmPin) {
-      setPinError(t('pin_mismatch'));
+      setPinError('PINs do not match');
       return;
     }
 
+    setIsUpdatingPin(true);
+    setPinError('');
     try {
-      // 1. Update Firebase Password
-      if (auth.currentUser) {
-        const firebasePassword = newPin + "123456";
-        await updatePassword(auth.currentUser, firebasePassword);
+      // Update in Firestore for record (though Auth is primary)
+      if (user?.id) {
+        await updateDoc(doc(db, 'users', user.id.toString()), {
+          pin: newPin,
+          updatedAt: new Date().toISOString()
+        });
       }
 
-      // 2. Update Local DB PIN
-      if (user?.id) {
-        await axios.put(`${API_URL}/users/${user.id}/pin`, { password: newPin });
+      // Update Firebase Auth Password (using PIN as password)
+      if (auth.currentUser) {
+        // Firebase requires at least 6 chars for password usually, 
+        // but we can append a secret suffix if needed or just use it as is if allowed.
+        // For simplicity we use the PIN + a dummy string to meet 6-char requirement if needed.
+        const securePass = newPin.padEnd(6, '0');
+        await updatePassword(auth.currentUser, securePass);
       }
 
       setPinSuccess(true);
-      setNewPin('');
-      setConfirmPin('');
-      setTimeout(() => setShowPinModal(false), 2000);
+      setTimeout(() => {
+        setShowPinModal(false);
+        setPinSuccess(false);
+        setNewPin('');
+        setConfirmPin('');
+      }, 2000);
     } catch (err: any) {
-      console.error('Update password failed:', err);
-      setPinError(err.message || 'Update failed');
+      console.error('PIN update error:', err);
+      setPinError(err.message || 'Failed to update PIN. Try logging in again.');
+    } finally {
+      setIsUpdatingPin(false);
     }
   };
 
-  interface SettingsItem {
-    icon: string;
-    label: string;
-    value: string;
-    color?: string;
-    onClick?: () => void;
-  }
-
-  interface SettingsSection {
-    title: string;
-    items: SettingsItem[];
-  }
-
-  const sections: SettingsSection[] = [
-    {
-      title: t('app_settings'),
-      items: [
-        { 
-          icon: theme === 'dark' ? 'dark_mode' : 'light_mode', 
-          label: t('appearance'), 
-          value: theme === 'dark' ? 'Dark' : 'Light',
-          onClick: toggleTheme
-        },
-        { 
-          icon: 'language', 
-          label: t('language'), 
-          value: language,
-          onClick: toggleLanguage
-        }
-      ]
-    },
-    {
-      title: t('security'),
-      items: [
-        { 
-          icon: 'pin', 
-          label: t('change_pin'), 
-          value: '', 
-          onClick: () => setShowPinModal(true) 
-        }
-      ]
-    },
-    {
-      title: t('support'),
-      items: [
-        // { icon: 'volunteer_activism', label: t('send_tips'), value: '', color: '#10b981', onClick: () => navigate('/tips') },
-        { icon: 'rate_review', label: 'Give Feedback', value: '', color: '#60a5fa', onClick: () => navigate('/feedback') },
-        { icon: 'list_alt', label: 'View All Feedbacks', value: '', color: '#fbbf24', onClick: () => navigate('/feedback-list') }
-      ]
-    }
-  ];
-
   return (
-    <div className="relative flex min-h-screen w-full page-responsive flex-col bg-[var(--bg-color)] text-slate-100 font-display pb-32">
-       <div className="aurora-bg">
+    <div className="page-shell">
+      <div className="aurora-bg">
         <div className="aurora-gradient-1"></div>
         <div className="aurora-gradient-2"></div>
       </div>
-      
-      <header className="p-6 pt-12 pb-8">
-        <h1 className="text-3xl font-black tracking-tight mb-2 text-[var(--text-main)]">{t('settings')}</h1>
-        <p className="text-slate-500 text-sm font-medium">{t('personalize')}</p>
+
+      <header className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>Settings</h1>
+          <p style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>
+            Account & Preferences
+          </p>
+        </div>
       </header>
 
-      <main className="flex-1 px-6">
+      <main style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         {/* Profile Card */}
-        <div className="glass-card rounded-3xl p-6 mb-8 bg-[var(--card-bg)] border border-[var(--border-color)] flex items-center gap-4">
-          <div className="size-16 rounded-2xl bg-gradient-to-br from-primary to-green-600 p-1">
-             <div className="size-full rounded-xl bg-slate-900 flex items-center justify-center overflow-hidden">
-                <img src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=random`} alt="Profile" className="size-full object-cover" />
-             </div>
+        <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+          <div style={{ width: '60px', height: '60px', borderRadius: '20px', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: '1.5rem' }}>
+            {user?.name?.charAt(0) || 'U'}
           </div>
-          <div>
-            <h2 className="text-lg font-bold text-[var(--text-main)]">{user?.name || 'User'}</h2>
-            <p className="text-slate-500 text-xs">{user?.email || 'user@example.com'}</p>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'white' }}>{user?.name || 'User'}</h3>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>{user?.email || 'No email'}</p>
           </div>
-          <button className="ml-auto size-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400">
-            <span className="material-symbols-outlined text-xl">edit</span>
+          {user?.role === 'admin' && (
+             <span style={{ fontSize: '9px', fontWeight: 900, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '4px 8px', borderRadius: '6px', textTransform: 'uppercase' }}>Admin</span>
+          )}
+        </div>
+
+        {/* Section: App Preferences */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.2em', marginLeft: '0.5rem', marginBottom: '0.25rem' }}>App Preferences</h3>
+          
+          <div className="glass-card" style={{ padding: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span className="material-symbols-outlined" style={{ color: '#10b981' }}>translate</span>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Language</span>
+              </div>
+              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px', gap: '4px' }}>
+                <button 
+                  onClick={() => setLanguage('English')}
+                  style={{ background: language === 'English' ? '#10b981' : 'transparent', color: language === 'English' ? '#064e3b' : '#64748b', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 900, cursor: 'pointer', transition: 'all 0.2s' }}
+                >EN</button>
+                <button 
+                  onClick={() => setLanguage('Tamil')}
+                  style={{ background: language === 'Tamil' ? '#10b981' : 'transparent', color: language === 'Tamil' ? '#064e3b' : '#64748b', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 900, cursor: 'pointer', transition: 'all 0.2s' }}
+                >தமிழ்</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section: Support & Growth */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.2em', marginLeft: '0.5rem', marginBottom: '0.25rem' }}>Growth & Feedback</h3>
+          
+          <button 
+            onClick={() => navigate('/feedback')}
+            className="glass-card" 
+            style={{ width: '100%', border: '1px solid var(--glass-border)', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span className="material-symbols-outlined" style={{ color: '#3b82f6' }}>rate_review</span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Send Feedback</span>
+            </div>
+            <span className="material-symbols-outlined" style={{ color: '#64748b', fontSize: '1.2rem' }}>chevron_right</span>
           </button>
         </div>
 
-        {/* Setting Sections */}
-        <div className="space-y-8">
-          {sections.map(section => (
-            <div key={section.title}>
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-4 px-2">{section.title}</h3>
-              <div className="space-y-2">
-                {section.items.map(item => (
-                  <div 
-                    key={item.label} 
-                    onClick={item.onClick}
-                    className="glass-card rounded-2xl p-4 bg-[var(--card-bg)] hover:bg-white/[0.05] border border-[var(--border-color)] flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98]"
-                  >
-                    <div className="size-10 rounded-xl bg-white/5 flex items-center justify-center text-slate-400">
-                      <span className="material-symbols-outlined">{item.icon}</span>
-                    </div>
-                    <span className="font-medium text-sm text-[var(--text-main)]">{item.label}</span>
-                    <div className="ml-auto flex items-center gap-2">
-                       {item.value && <span className="text-xs font-bold" style={{ color: item.color || '#64748b' }}>{item.value}</span>}
-                       <span className="material-symbols-outlined text-slate-600 text-lg">chevron_right</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {/* Section: Security */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.2em', marginLeft: '0.5rem', marginBottom: '0.25rem' }}>Security</h3>
+          
+          <button 
+            onClick={() => setShowPinModal(true)}
+            className="glass-card" 
+            style={{ width: '100%', border: '1px solid var(--glass-border)', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span className="material-symbols-outlined" style={{ color: '#ef4444' }}>lock_reset</span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Change Access PIN</span>
             </div>
-          ))}
+            <span className="material-symbols-outlined" style={{ color: '#64748b', fontSize: '1.2rem' }}>chevron_right</span>
+          </button>
         </div>
 
+        {/* Section: Admin Tools (Conditional) */}
+        {user?.role === 'admin' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.2em', marginLeft: '0.5rem', marginBottom: '0.25rem' }}>Admin Tools</h3>
+            
+            <button 
+              onClick={() => navigate('/admin')}
+              className="glass-card" 
+              style={{ width: '100%', border: '1px solid var(--glass-border)', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span className="material-symbols-outlined" style={{ color: '#BBFF00' }}>admin_panel_settings</span>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Admin Control Center</span>
+              </div>
+              <span className="material-symbols-outlined" style={{ color: '#64748b', fontSize: '1.2rem' }}>chevron_right</span>
+            </button>
+          </div>
+        )}
+
+        {/* Action: Logout */}
         <button 
           onClick={handleLogout}
-          className="w-full mt-12 mb-8 flex items-center justify-center gap-2 h-14 rounded-2xl border border-red-500/20 bg-red-500/5 text-red-500 font-bold hover:bg-red-500/10 transition-colors"
+          disabled={isLoggingOut}
+          className="glass-card" 
+          style={{ width: '100%', border: '1px solid rgba(239, 68, 68, 0.1)', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', color: '#ef4444', cursor: 'pointer', marginTop: '1rem', background: 'rgba(239, 68, 68, 0.05)' }}
         >
-          <span className="material-symbols-outlined">logout</span>
-          {t('sign_out')}
+          <span className="material-symbols-outlined">{isLoggingOut ? 'sync' : 'logout'}</span>
+          <span style={{ fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.8rem' }}>{isLoggingOut ? 'Logging out...' : 'Logout Session'}</span>
         </button>
+
+        <p style={{ textAlign: 'center', fontSize: '0.7rem', color: '#475569', marginTop: '2rem' }}>
+          PENDING v1.2.0 • Build 2026.03.13
+        </p>
       </main>
+
+      <BottomNav />
 
       {/* PIN Change Modal */}
       {showPinModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in p-4">
-          <div className="glass-card w-full max-w-md bg-[var(--bg-color)] rounded-t-[2.5rem] p-8 border-t border-white/10 shadow-2xl animate-slide-up">
-             <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8"></div>
-             
-             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-white">{t('change_pin')}</h2>
-                <button onClick={() => setShowPinModal(false)} className="size-10 rounded-full bg-white/5 flex items-center justify-center">
-                   <span className="material-symbols-outlined">close</span>
-                </button>
-             </div>
+        <div className="premium-modal-overlay" onClick={() => !isUpdatingPin && setShowPinModal(false)}>
+          <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle"></div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'white', margin: 0 }}>Update Access PIN</h2>
+              <button disabled={isUpdatingPin} onClick={() => setShowPinModal(false)} className="notification-btn">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
 
-             <form onSubmit={handleUpdatePin} className="space-y-6">
-                {pinError && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">{pinError}</div>}
-                {pinSuccess && <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">{t('pin_success')}</div>}
-                
-                <div className="space-y-2">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-2">{t('new_pin')}</label>
-                   <input 
-                     type="password" 
-                     maxLength={4}
-                     value={newPin}
-                     onChange={e => setNewPin(e.target.value.replace(/[^0-9]/g, ''))}
-                     className="w-full h-14 bg-white/5 rounded-2xl px-6 border border-white/5 focus:border-primary outline-none text-xl tracking-[0.5em] font-black text-white text-center"
-                     placeholder="****"
-                   />
+            {pinSuccess ? (
+              <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '2.5rem' }}>check</span>
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'white', margin: '0 0 0.5rem 0' }}>PIN Updated!</h3>
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Your sign-in credentials have been updated.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleUpdatePin} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div className="input-group">
+                  <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.5rem', display: 'block' }}>New 4-Digit PIN</label>
+                  <input 
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    className="form-input" 
+                    value={newPin} 
+                    onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))} 
+                    required 
+                    autoFocus 
+                    placeholder="••••"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: 'none', padding: '1rem', fontSize: '1.5rem', borderRadius: '1rem', color: 'white', width: '100%', boxSizing: 'border-box', textAlign: 'center', letterSpacing: '0.5em' }}
+                  />
                 </div>
 
-                <div className="space-y-2">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-2">{t('confirm_pin')}</label>
-                   <input 
-                     type="password" 
-                     maxLength={4}
-                     value={confirmPin}
-                     onChange={e => setConfirmPin(e.target.value.replace(/[^0-9]/g, ''))}
-                     className="w-full h-14 bg-white/5 rounded-2xl px-6 border border-white/5 focus:border-primary outline-none text-xl tracking-[0.5em] font-black text-white text-center"
-                     placeholder="****"
-                   />
+                <div className="input-group">
+                  <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.5rem', display: 'block' }}>Confirm New PIN</label>
+                  <input 
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    className="form-input" 
+                    value={confirmPin} 
+                    onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))} 
+                    required 
+                    placeholder="••••"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: 'none', padding: '1rem', fontSize: '1.5rem', borderRadius: '1rem', color: 'white', width: '100%', boxSizing: 'border-box', textAlign: 'center', letterSpacing: '0.5em' }}
+                  />
                 </div>
 
-                <button type="submit" className="glow-btn-primary w-full h-14 rounded-2xl mt-4 font-bold tracking-tight">
-                   {t('update_pin')}
+                {pinError && (
+                  <p style={{ color: '#ef4444', fontSize: '0.8rem', fontWeight: 700, margin: 0, textAlign: 'center' }}>{pinError}</p>
+                )}
+
+                <button 
+                  type="submit" 
+                  disabled={isUpdatingPin}
+                  className="glow-btn-primary" 
+                  style={{ width: '100%', height: '4rem', borderRadius: '1.25rem', fontSize: '0.9rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', gap: '0.75rem', marginTop: '1rem' }}
+                >
+                  <span className="material-symbols-outlined">{isUpdatingPin ? 'sync' : 'save'}</span>
+                  <span>{isUpdatingPin ? 'Saving...' : 'Update PIN'}</span>
                 </button>
-             </form>
+              </form>
+            )}
           </div>
         </div>
       )}
-
-      <BottomNav />
     </div>
   );
 };

@@ -158,11 +158,12 @@ const Dashboard: React.FC = () => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [quote, setQuote] = useState('');
+
+  const { user } = useAuth();
   
   const defaultCategories = ['Personal', 'Content', 'Health', 'Business'];
   const categories = Array.from(new Set([...defaultCategories, ...customCategories, ...tasks.map(t => t.category)]));
-
-  const { user } = useAuth();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -171,6 +172,19 @@ const Dashboard: React.FC = () => {
     }),
     useSensor(TouchSensor)
   );
+
+  const quotes = [
+    "One day at a time.",
+    "Small steps, big results.",
+    "Make it happen.",
+    "Eyes on the prize.",
+    "Focus on progress, not perfection.",
+    "Start where you are.",
+    "Stay consistent.",
+    "You've got this.",
+    "Dream big, act daily.",
+    "Today is yours."
+  ];
 
   // REALTIME FIRESTORE TASKS
   useEffect(() => {
@@ -195,21 +209,6 @@ const Dashboard: React.FC = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const [quote, setQuote] = useState('');
-
-  const quotes = [
-    "One day at a time.",
-    "Small steps, big results.",
-    "Make it happen.",
-    "Eyes on the prize.",
-    "Focus on progress, not perfection.",
-    "Start where you are.",
-    "Stay consistent.",
-    "You've got this.",
-    "Dream big, act daily.",
-    "Today is yours."
-  ];
-
   useEffect(() => {
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
     setQuote(randomQuote);
@@ -222,30 +221,40 @@ const Dashboard: React.FC = () => {
     e.preventDefault();
     if (!user?.id) return;
     
+    // Optimistic closure for instant feedback
+    const taskData = {
+      title,
+      description,
+      category,
+      priority,
+      updatedAt: new Date().toISOString()
+    };
+
     try {
       if (editTask) {
-        await updateDoc(doc(db, 'tasks', editTask.id), {
-          title,
-          description,
-          category,
-          priority,
-          updatedAt: new Date().toISOString()
-        });
+        setTasks(prev => prev.map(t => t.id === editTask.id ? { ...t, ...taskData } : t));
+        updateDoc(doc(db, 'tasks', editTask.id), taskData).catch(err => console.error('Error saving task:', err));
       } else {
-        await addDoc(collection(db, 'tasks'), {
+        const newTask = {
+          id: 'temp-' + Date.now().toString(),
+          ...taskData,
           userId: user.id.toString(),
-          title,
-          description,
-          category,
-          priority,
-          status: 'pending',
+          status: 'pending' as const,
           order_index: tasks.length + 1,
           createdAt: new Date().toISOString()
-        });
+        };
+        setTasks(prev => [...prev, newTask]);
+        addDoc(collection(db, 'tasks'), {
+          ...taskData,
+          userId: user.id.toString(),
+          status: 'pending',
+          order_index: tasks.length + 1,
+          createdAt: newTask.createdAt
+        }).catch(err => console.error('Error saving task:', err));
       }
       closeModal();
     } catch (err) {
-      console.error('Error saving task:', err);
+      console.error('Error in handleCreateOrUpdate:', err);
     }
   };
 
@@ -266,6 +275,7 @@ const Dashboard: React.FC = () => {
     }
   };
 
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -274,10 +284,8 @@ const Dashboard: React.FC = () => {
       const newIndex = tasks.findIndex((t) => t.id === over.id);
       const newTasks = arrayMove(tasks, oldIndex, newIndex);
       
-      // Update local state immediately for smoothness
       setTasks(newTasks);
 
-      // Persist reorder to Firestore using batch
       try {
         const batch = writeBatch(db);
         newTasks.forEach((t, idx) => {
@@ -311,160 +319,93 @@ const Dashboard: React.FC = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditTask(null);
+    setTitle('');
+    setDescription('');
+    setIsAddingCategory(false);
   };
 
   const getTimeGreeting = () => {
     const hour = new Date().getHours();
-    if (language === 'Tamil') {
-      if (hour < 12) return 'காலை வணக்கம்';
-      if (hour < 18) return 'மதிய வணக்கம்';
-      return 'மாலை வணக்கம்';
-    }
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hour < 12) return language === 'Tamil' ? 'காலை வணக்கம்' : 'Good Morning';
+    if (hour < 18) return language === 'Tamil' ? 'மதிய வணக்கம்' : 'Good Afternoon';
+    return language === 'Tamil' ? 'மாலை வணக்கம்' : 'Good Evening';
   };
 
   return (
-    <div className="page-shell" style={{ padding: '1rem' }}>
+    <div className="page-shell dashboard-layout">
       <div className="aurora-bg">
         <div className="aurora-gradient-1"></div>
         <div className="aurora-gradient-2"></div>
       </div>
 
-      {/* Header Section */}
-      <header className="dashboard-header" style={{ marginBottom: '2rem' }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.025em', margin: 0, color: 'var(--text-main)' }}>{getTimeGreeting()}, {user?.name?.split(' ')[0] || 'User'}</h1>
-          <p style={{ color: 'var(--primary)', fontWeight: 800, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>format_quote</span>
+      <header className="dashboard-header" style={{ marginBottom: '1.5rem', flexShrink: 0, padding: 0 }}>
+        <div style={{ width: '100%' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>
+            {getTimeGreeting()}, {user?.name?.split(' ')[0] || 'User'}
+          </h1>
+          <p style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#10b981', marginTop: '0.5rem' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>format_quote</span>
             {quote}
           </p>
         </div>
       </header>
 
-      {/* Quick Stats Row */}
-      <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-        <div className="glass-card stat-card-mini" style={{ padding: '1.25rem 1.5rem', background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+      <div className="stat-grid" style={{ marginBottom: '1.5rem', flexShrink: 0 }}>
+        <div className="glass-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <span className="stat-card-label" style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 900, color: '#ef4444', letterSpacing: '0.1em' }}>{t('pending').toUpperCase()}</span>
+              <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#ef4444', marginBottom: '0.25rem', display: 'block' }}>
+                {t('pending')}
+              </span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                <span className="stat-card-value" style={{ fontSize: '2rem', color: 'var(--text-main)' }}>{pendingCount}</span>
-                <span className="stat-card-sub" style={{ color: 'var(--text-secondary)' }}>{t('active_tasks')}</span>
+                <span style={{ fontSize: '2rem', fontWeight: 900, color: 'white' }}>{pendingCount}</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'bold' }}>{t('active_tasks')}</span>
               </div>
+            </div>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ color: '#ef4444' }}>assignment_late</span>
             </div>
           </div>
           
-          <div style={{ width: '100%', height: '8px', background: 'rgba(239, 68, 68, 0.25)', borderRadius: '10px', overflow: 'hidden', position: 'relative' }}>
-             {/* Total Tasks Base (Red) */}
-             <div style={{ position: 'absolute', inset: 0, background: '#ef4444', opacity: 0.3 }} />
-             
-             {/* Completed Progress (Green) */}
+          <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', overflow: 'hidden' }}>
              <div 
                style={{ 
-                 position: 'relative',
                  height: '100%', 
-                 width: `${totalCount > 0 ? ((totalCount - pendingCount) / totalCount) * 100 : 0}%`, 
-                 background: '#22c55e',
-                 boxShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
-                 transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                 borderRadius: '10px'
+                 background: '#10b981', 
+                 width: `${totalCount > 0 ? ((totalCount - pendingCount) / totalCount) * 100 : 0}%`,
+                 transition: 'width 0.7s ease-out'
                }} 
              />
           </div>
         </div>
       </div>
 
-
-
-      {/* Today's Focus Section */}
-      <section style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
+      <section style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, paddingBottom: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexShrink: 0 }}>
+          <h2 style={{ fontSize: '0.9rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', margin: 0 }}>
             {showAllTasks ? t('all_milestones') : t('today_focus')}
           </h2>
           <button 
             onClick={() => setShowAllTasks(!showAllTasks)}
-            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+            style={{ fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#10b981', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             {showAllTasks ? t('pending') : t('view_all')}
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '6rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {showAllTasks 
             ? [...tasks].sort((a) => a.status === 'completed' ? 1 : -1).map(task => (
-              <div
-                key={task.id}
-                className={`glass-card task-card ${task.status === 'completed' ? 'completed' : ''}`}
-              >
-                {/* Checkbox */}
-                <div 
-                  className={`checkbox-custom flex-shrink-0 ${task.status === 'completed' ? 'checked' : ''}`}
-                  onClick={() => toggleTaskStatus(task)}
-                  style={{ width: '2rem', height: '2rem', borderRadius: '0.625rem' }}
-                >
-                  {task.status === 'completed' && <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', color: 'white' }}>check</span>}
-                </div>
-
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => openModal(task)}>
-                  <h4 style={{ 
-                    fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.25rem 0',
-                    color: task.status === 'completed' ? '#64748b' : '#f8fafc',
-                    textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    lineHeight: '1.35'
-                  }}>{task.title}</h4>
-                  {task.description && (
-                    <p style={{
-                      fontSize: '0.78rem',
-                      color: '#64748b',
-                      margin: '0 0 0.5rem 0',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      lineHeight: '1.4'
-                    }}>{task.description}</p>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    <span className={`category-tag category-${task.category || 'Business'}`}>
-                      {task.category || 'Business'}
-                    </span>
-                    <span className={`priority-tag priority-${task.priority || 'Medium'}`}>
-                      {task.priority || 'Medium'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flexShrink: 0 }}>
-                  <button 
-                    className="icon-btn" 
-                    style={{ color: '#475569', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    onClick={() => deleteTask(task.id)}
-                    title="Delete"
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>delete</span>
-                  </button>
-                  <button 
-                    className="icon-btn" 
-                    style={{ color: '#475569', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    onClick={() => openModal(task)}
-                    title="Edit"
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>edit</span>
-                  </button>
-                </div>
-              </div>
+              <SortableTaskItem 
+                key={task.id} 
+                task={task} 
+                onToggle={toggleTaskStatus} 
+                onDelete={deleteTask} 
+                onEdit={openModal} 
+              />
             ))
             : (
-              <div className="task-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <div className="task-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <DndContext 
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -487,9 +428,9 @@ const Dashboard: React.FC = () => {
                 </DndContext>
 
                 {tasks.filter(t => t.status === 'pending').length === 0 && (
-                  <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', opacity: 0.5, borderStyle: 'dashed' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '2rem', marginBottom: '0.5rem', display: 'block' }}>task_alt</span>
-                    All caught up for today!
+                  <div className="glass-card" style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.4, borderStyle: 'dashed', borderWidth: '2px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>task_alt</span>
+                    <p style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>All caught up for today!</p>
                   </div>
                 )}
               </div>
@@ -498,63 +439,58 @@ const Dashboard: React.FC = () => {
         </div>
       </section>
 
-      {/* Bottom Navigation */}
       <BottomNav onAddClick={() => openModal()} />
 
-      {/* Modal */}
       {showModal && (
         <div className="premium-modal-overlay" onClick={closeModal}>
           <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle"></div>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.025em' }}>{editTask ? t('edit_task') : t('new_task')}</h2>
-              <button 
-                onClick={closeModal} 
-                className="notification-btn"
-                style={{ width: '36px', height: '36px', borderRadius: '50%' }}
-              >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'white', margin: 0 }}>{editTask ? t('edit_task') : t('new_task')}</h2>
+              <button onClick={closeModal} className="notification-btn">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleCreateOrUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <form onSubmit={handleCreateOrUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div className="input-group">
-                <label style={{ fontSize: '0.75rem', letterSpacing: '0.1em', fontWeight: 800, color: '#64748b', marginBottom: '0.75rem', display: 'block' }}>{t('task_name')}</label>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.5rem', display: 'block' }}>{t('task_name')}</label>
                 <div style={{ position: 'relative' }}>
-                  <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1.25rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', fontSize: '24px' }}>edit_note</span>
+                  <span className="material-symbols-outlined" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#10b981', fontSize: '20px' }}>edit_note</span>
                   <input 
                     className="form-input" 
                     value={title} 
                     onChange={e => setTitle(e.target.value)} 
                     required 
                     autoFocus 
-                    placeholder="E.g. Website Rebranding"
-                    style={{ background: 'rgba(255,255,255,0.03)', border: 'none', padding: '1.25rem 1.25rem 1.25rem 3.75rem', fontSize: '1.15rem', borderRadius: '1.5rem', color: 'white', width: '100%', boxSizing: 'border-box' }}
+                    placeholder="Task name..."
+                    style={{ background: 'rgba(255,255,255,0.05)', border: 'none', padding: '1rem 1rem 1rem 3rem', fontSize: '1.1rem', borderRadius: '1rem', color: 'white', width: '100%', boxSizing: 'border-box', fontWeight: 'bold' }}
                   />
                 </div>
               </div>
 
               <div className="input-group">
-                <label style={{ fontSize: '0.75rem', letterSpacing: '0.1em', fontWeight: 800, color: '#64748b', marginBottom: '0.75rem', display: 'block' }}>{t('description')}</label>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.5rem', display: 'block' }}>{t('description')}</label>
                 <textarea 
                   className="form-input" 
                   value={description} 
                   onChange={e => setDescription(e.target.value)} 
-                  placeholder="Add more details about this task..."
-                  style={{ background: 'rgba(255,255,255,0.03)', border: 'none', minHeight: '120px', padding: '1.25rem', fontSize: '1.05rem', borderRadius: '1.5rem', resize: 'none', color: 'white', width: '100%', boxSizing: 'border-box' }}
+                  placeholder="Details..."
+                  style={{ background: 'rgba(255,255,255,0.05)', border: 'none', minHeight: '100px', padding: '1rem', fontSize: '0.9rem', borderRadius: '1rem', resize: 'none', color: 'white', width: '100%', boxSizing: 'border-box' }}
                 />
               </div>
 
               <div className="input-group">
-                <label style={{ fontSize: '0.75rem', letterSpacing: '0.1em', fontWeight: 800, color: '#64748b', marginBottom: '1rem', display: 'block' }}>{t('categories')}</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.75rem', display: 'block' }}>{t('categories')}</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                   {categories.map(cat => (
                     <button 
                       key={cat}
                       type="button"
                       className={`tag-btn ${category === cat ? 'active' : ''}`}
                       onClick={() => { setCategory(cat); setIsAddingCategory(false); }}
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', fontWeight: 'bold', borderRadius: '0.75rem' }}
                     >
                       {cat}
                     </button>
@@ -564,7 +500,7 @@ const Dashboard: React.FC = () => {
                       type="button" 
                       onClick={() => setIsAddingCategory(true)}
                       className="tag-btn"
-                      style={{ background: 'var(--primary)', color: 'white', fontWeight: 'bold' }}
+                      style={{ background: '#10b981', color: '#064e3b', fontWeight: 'black', padding: '0.5rem 1rem', borderRadius: '0.75rem' }}
                     >
                       + {t('add')}
                     </button>
@@ -575,87 +511,76 @@ const Dashboard: React.FC = () => {
                         value={newCategoryName}
                         onChange={(e) => setNewCategoryName(e.target.value)}
                         placeholder="Group name..."
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #10b981', borderRadius: '0.75rem', padding: '0.5rem 1rem', color: 'white', flex: 1 }}
                         autoFocus
-                        style={{ 
-                          background: 'rgba(255,255,255,0.05)', 
-                          border: '1px solid var(--primary)', 
-                          borderRadius: '1rem', 
-                          padding: '0.75rem 1rem', 
-                          color: 'white',
-                          flex: 1
-                        }}
                       />
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            if (newCategoryName.trim()) {
-                              setCustomCategories(prev => [...prev, newCategoryName.trim()]);
-                              setCategory(newCategoryName.trim());
-                              setNewCategoryName('');
-                              setIsAddingCategory(false);
-                            }
-                          }}
-                          className="tag-btn active"
-                          style={{ minWidth: '60px' }}
-                        >
-                          {t('add')}
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setIsAddingCategory(false)}
-                          className="tag-btn"
-                          style={{ minWidth: '70px' }}
-                        >
-                          {t('cancel')}
-                        </button>
-                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (newCategoryName.trim()) {
+                            setCustomCategories(prev => [...prev, newCategoryName.trim()]);
+                            setCategory(newCategoryName.trim());
+                            setNewCategoryName('');
+                            setIsAddingCategory(false);
+                          }
+                        }}
+                        className="tag-btn active"
+                        style={{ padding: '0.5rem 1rem' }}
+                      >
+                        {t('add')}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="input-group">
-                <label style={{ fontSize: '0.75rem', letterSpacing: '0.1em', fontWeight: 800, color: '#64748b', marginBottom: '1rem', display: 'block' }}>{t('priority')}</label>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <label style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', marginBottom: '0.75rem', display: 'block' }}>{t('priority')}</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
                   {([
-                    { value: 'High',   color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.4)',   icon: '🔴' },
-                    { value: 'Medium', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.4)',  icon: '🟡' },
-                    { value: 'Low',    color: '#3b82f6', bg: 'rgba(59,130,246,0.15)',  border: 'rgba(59,130,246,0.4)',  icon: '🔵' },
-                  ] as const).map(({ value, color, bg, border, icon }) => (
+                    { value: 'High', color: '#ef4444', icon: '🔴' },
+                    { value: 'Medium', color: '#f59e0b', icon: '🟡' },
+                    { value: 'Low', color: '#3b82f6', icon: '🔵' },
+                  ] as const).map(({ value, color, icon }) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setPriority(value)}
                       style={{
-                        flex: 1,
                         padding: '0.75rem 0.5rem',
                         borderRadius: '1rem',
-                        fontWeight: 800,
-                        fontSize: '0.85rem',
-                        border: `2px solid ${priority === value ? border : 'rgba(255,255,255,0.06)'}`,
-                        background: priority === value ? bg : 'rgba(255,255,255,0.03)',
+                        fontWeight: 900,
+                        fontSize: '0.65rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        border: '2px solid transparent',
+                        background: 'rgba(255,255,255,0.03)',
                         color: priority === value ? color : '#64748b',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        transform: priority === value ? 'translateY(-2px)' : 'none',
-                        boxShadow: priority === value ? `0 4px 15px ${bg}` : 'none',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
                         gap: '0.25rem',
+                        opacity: priority === value ? 1 : 0.4,
+                        ...(priority === value ? { borderColor: color, background: `${color}15` } : {})
                       }}
                     >
-                      <span style={{ fontSize: '1.2rem' }}>{icon}</span>
+                      <span style={{ fontSize: '1.25rem' }}>{icon}</span>
                       {value}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div style={{ paddingTop: '2rem', paddingBottom: '3rem' }}>
-                <button type="submit" className="glow-btn-primary" style={{ height: '4.5rem', borderRadius: '1.5rem', fontSize: '1.2rem', gap: '0.75rem' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '28px', fontWeight: 'bold' }}>add_task</span>
+              <div style={{ paddingTop: '1rem' }}>
+                <button 
+                  type="submit" 
+                  className="glow-btn-primary" 
+                  style={{ width: '100%', height: '4rem', borderRadius: '1.25rem', fontSize: '0.9rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', gap: '0.75rem' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>
+                    add_task
+                  </span>
                   <span>{editTask ? t('update_milestone') : t('save_task')}</span>
                 </button>
               </div>

@@ -1,116 +1,91 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-
-const API_URL = 'http://localhost:3001/api';
-
-interface FeedbackItem {
-  id: number;
-  user_id: string;
-  type: string;
-  description: string;
-  created_at: string;
-}
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import BottomNav from '../components/BottomNav';
 
 const FeedbackList: React.FC = () => {
-  const navigate = useNavigate();
-  const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
+  const [feedbacks, setFeedbacks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchFeedbacks();
+    const q = query(collection(db, 'feedback'), orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setFeedbacks(list);
+      setLoading(false);
+    }, (err) => {
+      console.error('Feedback fetch error:', err);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const fetchFeedbacks = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/feedback`);
-      setFeedbacks(response.data);
-    } catch (err) {
-      console.error('Error fetching feedbacks:', err);
-      setError('Failed to load feedbacks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'issue': return '#f87171';
-      case 'feedback': return '#60a5fa';
-      case 'feature': return '#fbbf24';
-      default: return '#94a3b8';
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'issue': return 'Issue';
-      case 'feedback': return 'Feedback';
-      case 'feature': return 'Feature';
-      default: return type;
-    }
-  };
-
   return (
-    <div className="relative flex min-h-screen w-full page-responsive flex-col bg-[var(--bg-color)] text-[var(--text-main)] font-display pb-12">
-      <div className="aurora-bg"><div className="aurora-gradient-1"></div><div className="aurora-gradient-2"></div></div>
+    <div className="page-shell">
+      <div className="aurora-bg">
+        <div className="aurora-gradient-1"></div>
+        <div className="aurora-gradient-2"></div>
+      </div>
 
-      <header className="p-6 pt-12 flex items-center gap-4 relative z-10">
-        <button
-          onClick={() => navigate('/settings')}
-          className="size-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-        </button>
+      <header className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
         <div>
-          <h1 className="text-2xl font-black tracking-tight">All Feedback</h1>
-          <p className="text-slate-500 text-xs font-medium">User submissions review</p>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>User Feed</h1>
+          <p style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>
+            Community Voices
+          </p>
         </div>
       </header>
 
-      <main className="px-6 relative z-10 flex flex-col gap-4">
+      <main>
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="size-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-            <p className="text-slate-400 text-sm">Loading feedbacks...</p>
-          </div>
-        ) : error ? (
-          <div className="glass-card p-6 border-red-500/20 bg-red-500/5 text-center">
-            <span className="material-symbols-outlined text-red-400 text-4xl mb-2">error</span>
-            <p className="text-red-400 font-bold">{error}</p>
-          </div>
-        ) : feedbacks.length === 0 ? (
-          <div className="glass-card p-12 border-white/5 bg-white/[0.02] text-center rounded-3xl">
-            <span className="material-symbols-outlined text-slate-600 text-5xl mb-4">forum</span>
-            <p className="text-slate-400 font-medium">No feedback received yet.</p>
+          <div style={{ textAlign: 'center', padding: '4rem 0', opacity: 0.5 }}>
+            <span className="material-symbols-outlined animate-spin" style={{ fontSize: '2rem' }}>sync</span>
           </div>
         ) : (
-          feedbacks.map((item) => (
-            <div key={item.id} className="glass-card p-5 border-white/5 bg-white/[0.03] rounded-2xl flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span 
-                    className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md"
-                    style={{ background: `${getTypeColor(item.type)}20`, color: getTypeColor(item.type), border: `1px solid ${getTypeColor(item.type)}40` }}
-                  >
-                    {getTypeLabel(item.type)}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-bold">
-                    ID: {item.user_id?.slice(0, 8) || 'Guest'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {feedbacks.map(f => (
+              <div key={f.id} className="glass-card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                      {f.userName?.charAt(0) || 'A'}
+                    </div>
+                    <span style={{ fontWeight: 800, color: 'white', fontSize: '0.9rem' }}>{f.userName || 'Anonymous'}</span>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#475569' }}>{new Date(f.createdAt).toLocaleDateString()}</span>
+                </div>
+                
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8', lineHeight: '1.6' }}>{f.message}</p>
+                
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 900, color: '#10b981', background: 'rgba(16,185,129,0.05)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                    {f.type || 'General'}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-medium">
-                  {new Date(item.created_at).toLocaleDateString()}
-                </span>
               </div>
-              <p className="text-sm text-slate-200 leading-relaxed italic">
-                "{item.description}"
-              </p>
-            </div>
-          ))
+            ))}
+
+            {feedbacks.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '4rem 0', opacity: 0.3 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '3rem', marginBottom: '1rem' }}>chat_bubble_outline</span>
+                <p style={{ fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', fontSize: '10px' }}>No entries found</p>
+              </div>
+            )}
+          </div>
         )}
       </main>
+
+      <BottomNav />
     </div>
   );
 };

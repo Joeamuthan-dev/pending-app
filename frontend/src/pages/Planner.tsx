@@ -58,6 +58,7 @@ const Planner: React.FC = () => {
     }
   };
 
+
   const toggleTaskStatus = async (task: Task) => {
     try {
       const newStatus = task.status === 'pending' ? 'completed' : 'pending';
@@ -74,7 +75,6 @@ const Planner: React.FC = () => {
     return a.status === 'pending' ? -1 : 1;
   });
 
-  // Group tasks by date
   const groupTasksByDate = (tasksToGroup: Task[]) => {
     const groups: { [key: string]: Task[] } = {};
     tasksToGroup.forEach(task => {
@@ -89,104 +89,113 @@ const Planner: React.FC = () => {
   const dateKeys = Object.keys(groupedTasks);
 
   return (
-    <div className="relative flex min-h-screen w-full page-responsive flex-col bg-[var(--bg-color)] text-[var(--text-main)] font-display pb-32 overflow-hidden">
+    <div className="page-shell">
       <div className="aurora-bg">
         <div className="aurora-gradient-1"></div>
         <div className="aurora-gradient-2"></div>
       </div>
 
-      <header className="p-6 pt-10 relative z-10 border-b border-white/5">
-        <div className="flex justify-between items-center">
+      <header className="dashboard-header" style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div>
-            <h1 className="text-4xl font-black tracking-tighter text-[var(--text-main)]">Timeline</h1>
-            <p className="text-emerald-500/80 text-sm font-bold tracking-widest uppercase mt-1">Archived & Active</p>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>Timeline</h1>
+            <p style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>
+              Archived & Active
+            </p>
           </div>
-          <div className="flex gap-3">
-             <button 
-                className={`size-12 rounded-2xl flex items-center justify-center transition-all ${showAll ? 'bg-emerald-500 text-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-white/5 border border-white/10 text-[var(--text-main)]'}`}
-                onClick={() => setShowAll(!showAll)}
-             >
-                <span className="material-symbols-outlined">{showAll ? 'visibility' : 'visibility_off'}</span>
-             </button>
-          </div>
+          <button 
+            onClick={() => setShowAll(!showAll)}
+            style={{ 
+              width: '44px', 
+              height: '44px', 
+              borderRadius: '14px', 
+              background: showAll ? '#10b981' : 'rgba(255,255,255,0.05)', 
+              border: 'none', 
+              color: showAll ? '#064e3b' : 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            <span className="material-symbols-outlined">{showAll ? 'visibility' : 'visibility_off'}</span>
+          </button>
         </div>
       </header>
 
-      <main className="flex-1 px-6 relative z-10">
-        <div className="space-y-12 pb-10">
-           {dateKeys.map(dateKey => {
-             const isToday = dateKey === new Date().toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
-             const displayDate = isToday ? 'Today' : dateKey;
-             const groupTasks = groupedTasks[dateKey];
+      <main>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          {dateKeys.map(dateKey => {
+            const isToday = dateKey === new Date().toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+            const displayDate = isToday ? 'Today' : dateKey;
+            const groupTasks = groupedTasks[dateKey];
 
-             return (
-               <div key={dateKey} className="space-y-6">
-                 <div className="flex items-center gap-4">
-                    <h3 className="text-sm font-black text-white/40 uppercase tracking-[0.2em]">{displayDate}</h3>
-                    <div className="flex-1 h-px bg-white/5"></div>
-                 </div>
+            return (
+              <div key={dateKey} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <h3 style={{ fontSize: '10px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.2em', margin: 0 }}>{displayDate}</h3>
+                  <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.05)' }}></div>
+                </div>
 
-                 <div className="space-y-6 relative ml-2">
-                    {/* Vertical Line for Group */}
-                    <div className="absolute left-[23px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-emerald-500/30 via-emerald-500/10 to-transparent rounded-full"></div>
-
-                    {groupTasks.map((task) => {
-                      const taskDate = new Date(task.createdAt);
-                      const isCompleted = task.status === 'completed';
-                      
-                      return (
-                        <div key={task.id} className={`flex gap-6 group transition-all duration-500 ${isCompleted ? 'opacity-60' : ''}`}>
-                           <div className="flex flex-col items-center pt-2 relative">
-                              <div className={`size-12 rounded-2xl flex items-center justify-center z-10 transition-all duration-300
-                                ${!isCompleted ? 'bg-emerald-500 text-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-900 border border-white/10 text-slate-500'}`}>
-                                 <span className="text-xs font-black">{taskDate.getDate()}</span>
-                              </div>
-                              {!isCompleted && isToday && (
-                                <div className="absolute -inset-1 blur-md bg-emerald-500/20 rounded-2xl animate-pulse"></div>
-                              )}
-                           </div>
-                           
-                           <div className={`flex-1 glass-card rounded-3xl p-5 border transition-all duration-300 group-hover:translate-x-1
-                             ${!isCompleted ? 'bg-white/[0.08] border-white/20' : 'bg-white/[0.02] border-white/[0.05]'}`}>
-                              <div className="flex justify-between items-start">
-                                 <div className="flex flex-col">
-                                   <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isCompleted ? 'text-slate-600' : 'text-emerald-500'}`}>
-                                     {task.category || 'Focus'} • <span className={`priority-tag priority-${task.priority || 'Medium'}`} style={{ verticalAlign: 'middle', margin: '0 4px', padding: '1px 4px' }}>{task.priority || 'Medium'}</span>
-                                   </span>
-                                   <h4 className={`font-bold text-base leading-tight ${isCompleted ? 'text-slate-500 line-through' : 'text-white'}`}>
-                                     {task.title}
-                                   </h4>
-                                 </div>
-                                 <div className="ml-4 flex gap-2">
-                                   <span 
-                                     onClick={() => deleteTask(task.id)}
-                                     className="material-symbols-outlined text-lg text-slate-600 hover:text-red-500 transition-colors cursor-pointer"
-                                   >
-                                     delete
-                                   </span>
-                                   <span 
-                                     onClick={() => toggleTaskStatus(task)}
-                                     className={`material-symbols-outlined text-lg transition-colors cursor-pointer ${isCompleted ? 'text-emerald-500' : 'text-slate-600 hover:text-white'}`}
-                                   >
-                                     {isCompleted ? 'check_circle' : 'circle'}
-                                   </span>
-                                 </div>
-                              </div>
-                           </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
+                  {groupTasks.map((task) => {
+                    const isCompleted = task.status === 'completed';
+                    return (
+                      <div 
+                        key={task.id} 
+                        className={`glass-card task-card ${isCompleted ? 'completed' : ''}`}
+                        style={{ padding: '1rem', opacity: isCompleted ? 0.6 : 1 }}
+                      >
+                        <div 
+                          className={`checkbox-custom ${isCompleted ? 'checked' : ''}`}
+                          onClick={() => toggleTaskStatus(task)}
+                          style={{ width: '1.5rem', height: '1.5rem', borderRadius: '0.5rem', flexShrink: 0 }}
+                        >
+                          {isCompleted && <span className="material-symbols-outlined" style={{ fontSize: '0.9rem', color: 'white' }}>check</span>}
                         </div>
-                      );
-                    })}
-                 </div>
-               </div>
-             );
-           })}
-           
-           {dateKeys.length === 0 && (
-             <div className="text-center py-20 opacity-30">
-                <span className="material-symbols-outlined text-6xl mb-4">event_busy</span>
-                <p className="font-bold uppercase tracking-widest text-xs">No tasks found</p>
-             </div>
-           )}
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <span style={{ fontSize: '9px', fontWeight: 900, color: isCompleted ? '#64748b' : '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              {task.category || 'Focus'}
+                            </span>
+                            <span style={{ fontSize: '9px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase' }}>•</span>
+                            <span className={`priority-tag priority-${task.priority}`} style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              {task.priority}
+                            </span>
+                          </div>
+                          <h4 style={{ 
+                            fontSize: '0.9rem', 
+                            fontWeight: 700, 
+                            margin: 0, 
+                            color: isCompleted ? '#64748b' : 'white',
+                            textDecoration: isCompleted ? 'line-through' : 'none'
+                          }}>
+                            {task.title}
+                          </h4>
+                        </div>
+
+                        <button 
+                          onClick={() => deleteTask(task.id)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', padding: '0.25rem', cursor: 'pointer', opacity: 0.6 }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>delete</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {dateKeys.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '4rem 0', opacity: 0.3 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '3rem', marginBottom: '1rem' }}>event_busy</span>
+              <p style={{ fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', fontSize: '10px' }}>No tasks found</p>
+            </div>
+          )}
         </div>
       </main>
 

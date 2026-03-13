@@ -597,6 +597,29 @@ body {
   border-color: rgba(16, 185, 129, 0.4);
 }
 
+.checkbox-custom:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Dashboard Vertical Scroll Lock Layout */
+.dashboard-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  padding: 1.5rem !important;
+  padding-bottom: 5.5rem !important; /* Space for Bottom Nav */
+}
+
+@media (min-width: 768px) {
+  .dashboard-layout {
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow: visible !important;
+    padding-bottom: 2rem !important;
+  }
+}
+
 .checkbox-custom {
   width: 1.5rem;
   height: 1.5rem;
@@ -1027,11 +1050,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   padding: 1.5rem;
-  padding-bottom: 4rem;
   position: relative;
-  overflow-y: auto;
+  overflow: hidden;
   max-width: 480px;
   width: 100%;
   margin: 0 auto;
@@ -1041,8 +1063,6 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
-  margin-bottom: 1rem;
-  padding-top: 2rem;
 }
 
 /* ── Desktop ─────────────────────────────────── */
